@@ -1,0 +1,131 @@
+# FTMO $100,000 — rule configuration
+#
+# Researched 2026-09-21. MUST be re-verified against the live FTMO account
+# dashboard before any real-money phase (PRD assumption A3).
+#
+# Two tiers of limits:
+#   hard_*  = the firm's actual limits. Never used to gate trades; exist only
+#             as assertions. If a hard limit is ever crossed, that is a P0 bug.
+#   soft_*  = our operating limits. These are what actually block trades.
+# The gap between them is the safety margin that absorbs slippage, gaps and
+# manual execution error.
+
+meta:
+  firm: FTMO
+  program: Challenge -> Verification -> Funded
+  account_size: 100000
+  currency: USD
+  researched_on: 2026-09-21
+  verified_against_dashboard: false      # <-- flip to true only after checking
+
+# ---------------------------------------------------------------- firm limits
+
+hard_limits:
+  # Daily loss is measured from the PREVIOUS DAY'S CLOSING BALANCE and compared
+  # against CURRENT EQUITY including floating P&L, at any moment intraday.
+  daily_loss_pct: 5.0                    # $5,000
+  daily_loss_basis: prev_day_closing_balance
+  daily_loss_includes_floating: true
+
+  # Max drawdown is STATIC — the floor never moves regardless of profit.
+  max_loss_pct: 10.0                     # floor at $90,000
+  max_loss_basis: initial_balance
+  max_loss_trailing: false
+
+  daily_reset:
+    timezone: Europe/Prague              # midnight CET/CEST, DST-aware
+    hour: 0
+    # 03:30 IST in winter, 04:30 IST in summer.
+    # The 18:30-23:00 IST trading window sits entirely inside one FTMO day.
+
+phases:
+  challenge:
+    profit_target_pct: 10.0              # $10,000
+    min_trading_days: 4
+    max_days: null                       # unlimited as of research date
+  verification:
+    profit_target_pct: 5.0               # $5,000
+    min_trading_days: 4
+    max_days: null
+  funded:
+    profit_target_pct: null
+    min_trading_days: 0
+    max_days: null
+
+# ------------------------------------------------------------ our own limits
+
+soft_limits:
+  risk_per_trade_pct: 0.5                # ASSUMPTION A1 — confirm with user
+  daily_stop_pct: 2.0                    # stop for the day well before FTMO's 5%
+  max_drawdown_pct: 6.0                  # floor at $94,000, well above $90,000
+  weekly_circuit_breaker_pct: 4.0        # halt signals for the rest of the week
+
+  max_trades_per_day: 3
+  max_concurrent_positions: 1            # one gold position at a time
+  cooldown_after_loss_minutes: 45
+  reduce_size_after_consecutive_losses:
+    2: 0.5                               # halve risk after 2 straight losses
+    3: 0.0                               # stop signalling after 3
+
+  slippage_buffer_usd: 50                # added to worst case on every check
+
+# ------------------------------------------------------------------- trading
+
+instrument:
+  symbol: XAUUSD
+  contract_size: 100                     # troy oz per standard lot
+  usd_per_point_per_lot: 100             # $1.00 price move = $100 per lot
+  min_lot: 0.01
+  lot_step: 0.01
+
+position_sizing:
+  method: atr_risk
+  atr_period: 14
+  atr_timeframe: M15
+  atr_multiple: 1.5
+  min_stop_usd: 2.50                     # floor — avoids noise-width stops
+  max_stop_usd: 15.00                    # ceiling — beyond this, skip the trade
+  rounding: down                         # ALWAYS down; never exceed risk
+
+session:
+  timezone: Asia/Kolkata
+  primary_window:
+    start: "18:30"
+    end: "23:00"
+  # Hard flat-by rule. No overnight positions, ever.
+  no_overnight: true
+  flat_by: "23:30"
+  # A trade must have room to breathe before the cutoff.
+  min_minutes_before_cutoff: 45
+  expected_hold_minutes: 150             # 2.5h typical
+
+# --------------------------------------------------------------------- news
+
+news:
+  # FTMO: news trading is UNRESTRICTED during Challenge and Verification.
+  # On a funded FTMO Account there is a +/-2 minute restriction around key
+  # releases. We use a wider buffer because execution is manual.
+  blackout_enabled_in_phase:
+    challenge: false
+    verification: false
+    funded: true
+  blackout_minutes_before: 5
+  blackout_minutes_after: 5
+  high_impact_events:
+    - NFP
+    - CPI
+    - FOMC
+    - PCE
+    - GDP
+    - "Fed Chair Speech"
+    - "Interest Rate Decision"
+  # Even where blackout is off, warn before entering near a release.
+  warn_minutes_before: 30
+
+# ------------------------------------------------------------------ signals
+
+signal_policy:
+  min_conviction: 60                     # below this, do not dispatch
+  min_rr: 1.5                            # reject setups with worse R:R
+  entry_valid_minutes: 30                # signal expires if unfilled
+  max_hold_minutes: 180
