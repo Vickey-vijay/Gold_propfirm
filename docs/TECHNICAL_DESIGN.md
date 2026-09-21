@@ -298,18 +298,49 @@ Two levers if cost still matters, in order of preference: the Trigger Gate (fewe
 
 ## 11. Deployment
 
+**Target host surveyed 2026-09-21** — `35.226.195.159`, and it is not an empty box:
+
+| | |
+|---|---|
+| OS / Python | Debian 12, Python 3.11.2 (meets our `>=3.11`) |
+| RAM | **969 MB total, ~419 MB available** |
+| Swap | **none** |
+| Disk | 30 GB, 20 GB free |
+| Docker | **not installed** |
+| Already running | nginx on `:80`; two Node apps on `:3001`/`:3002` under PM2 (The Cabins UAE site + admin); a Streamlit app on `:8501`; a cloudflared tunnel; GCP agents (~85 MB) |
+
+**This invalidates the Docker Compose + Caddy plan from v1.0.** On a 1 GB box with
+no swap that is already serving a live client site, the Docker daemon's overhead
+is not affordable, and Caddy would collide with nginx on `:80`. Revised plan:
+
 ```
-/opt/propdesk
-  docker-compose.yml     app + caddy
-  .env                   ANTHROPIC_API_KEY, TELEGRAM_TOKEN, data keys
-  data/propdesk.db       SQLite, volume-mounted
-  config/rules.yaml      active rule config
+/opt/propdesk/
+  .venv/                       virtualenv, no container
+  app/                         deployed source
+  config/rules.ftmo-100k.yaml
+  data/propdesk.db             SQLite (WAL)
+  .env                         chmod 600, never committed
+/etc/systemd/system/propdesk.service
+/etc/nginx/sites-available/propdesk   -> proxy to 127.0.0.1:8000
 ```
 
-- Caddy terminates TLS, basic-auth on the dashboard
-- Nightly `sqlite3 .backup` to GCS
-- `/health` endpoint; APScheduler job failures alert to Telegram
-- Secrets in `.env`, never committed, `chmod 600`
+- **systemd** unit running uvicorn bound to `127.0.0.1:8000`, `Restart=always`
+- **nginx** (already present) proxies a vhost or `/propdesk` location to it, with
+  basic auth on the dashboard. Do not touch the existing server blocks.
+- **Add a 2 GB swapfile before deploying.** Disk is free and the current headroom
+  leaves no margin — an OOM kill would take down the live Cabins site, not just
+  this app. This is the single highest-value hardening step on this host.
+- **Memory budget:** FastAPI + uvicorn + pydantic lands around 60–80 MB. Adding
+  pandas pushes it to 150–200 MB. Prefer plain Python and `statistics` for the
+  indicator math in L1 and only reach for pandas if profiling justifies it.
+- `MemoryMax=300M` on the systemd unit so this app is the one that dies under
+  pressure, never the client site.
+- Nightly `sqlite3 .backup` to GCS; `/health` endpoint; APScheduler job failures
+  alert to Telegram.
+
+**Open decision:** this host is shared with production client work. A dedicated
+`e2-small` (2 GB) is roughly $13/month and removes the contention entirely. Worth
+considering before P3 rather than after an incident.
 
 ## 12. Security
 
