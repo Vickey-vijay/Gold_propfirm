@@ -298,20 +298,20 @@ Two levers if cost still matters, in order of preference: the Trigger Gate (fewe
 
 ## 11. Deployment
 
-**Target host surveyed 2026-09-21** — `35.226.195.159`, and it is not an empty box:
+**Target host surveyed 2026-09-21, swap confirmed 2026-09-23** — `35.226.195.159`, and it is not an empty box:
 
 | | |
 |---|---|
 | OS / Python | Debian 12, Python 3.11.2 (meets our `>=3.11`) |
-| RAM | **969 MB total, ~419 MB available** |
-| Swap | **none** |
+| RAM | **969 MB total, ~445 MB available** |
+| Swap | **2 GB swapfile at `/swapfile`, active, persisted in `/etc/fstab`** — present on the box already; the 2026-09-21 survey missed it because `swapon` lives in `/sbin`, off the non-interactive SSH `PATH` |
 | Disk | 30 GB, 20 GB free |
 | Docker | **not installed** |
 | Already running | nginx on `:80`; two Node apps on `:3001`/`:3002` under PM2 (The Cabins UAE site + admin); a Streamlit app on `:8501`; a cloudflared tunnel; GCP agents (~85 MB) |
 
-**This invalidates the Docker Compose + Caddy plan from v1.0.** On a 1 GB box with
-no swap that is already serving a live client site, the Docker daemon's overhead
-is not affordable, and Caddy would collide with nginx on `:80`. Revised plan:
+**This invalidates the Docker Compose + Caddy plan from v1.0.** On a 1 GB box that
+is already serving a live client site, the Docker daemon's overhead is not
+affordable, and Caddy would collide with nginx on `:80`. Revised plan:
 
 ```
 /opt/propdesk/
@@ -327,9 +327,6 @@ is not affordable, and Caddy would collide with nginx on `:80`. Revised plan:
 - **systemd** unit running uvicorn bound to `127.0.0.1:8000`, `Restart=always`
 - **nginx** (already present) proxies a vhost or `/propdesk` location to it, with
   basic auth on the dashboard. Do not touch the existing server blocks.
-- **Add a 2 GB swapfile before deploying.** Disk is free and the current headroom
-  leaves no margin — an OOM kill would take down the live Cabins site, not just
-  this app. This is the single highest-value hardening step on this host.
 - **Memory budget:** FastAPI + uvicorn + pydantic lands around 60–80 MB. Adding
   pandas pushes it to 150–200 MB. Prefer plain Python and `statistics` for the
   indicator math in L1 and only reach for pandas if profiling justifies it.
