@@ -30,6 +30,12 @@ from propdesk.sync.crypto import SecretKeyMissing, encrypt
 from propdesk.sync.metaapi_client import MetaApiConnectionError, provision_account
 from propdesk.sync.worker import daily_rollover, sync_once
 
+# Without this, every logger.info/warning call anywhere under the propdesk.*
+# hierarchy (this module, sync/worker.py) is silently swallowed — Python
+# attaches no handler by default, and uvicorn only configures its OWN
+# uvicorn.* loggers, not ours. Caught by noticing the "scheduler started"
+# line was simply missing from the journal after deploying to the server.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger("propdesk.dashboard")
 
 BASE_DIR = Path(__file__).resolve().parent
