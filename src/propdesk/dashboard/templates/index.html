@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prop Desk — Account Dashboard</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --panel: #131922;
+    --panel-2: #1a212c;
+    --border: #232b38;
+    --text: #e6edf3;
+    --muted: #8b98a9;
+    --accent: #d4af37;
+    --green: #3fb950;
+    --amber: #d29922;
+    --red: #f85149;
+    --long: #3fb950;
+    --short: #f85149;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    margin: 0;
+    padding: 24px;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  h1 { font-size: 1.4rem; margin: 0; font-weight: 600; }
+  h1 .muted { color: var(--muted); font-weight: 400; }
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .badge.warn { background: rgba(210,153,34,0.15); color: var(--amber); border: 1px solid rgba(210,153,34,0.4); }
+  .badge.ok { background: rgba(63,185,80,0.15); color: var(--green); border: 1px solid rgba(63,185,80,0.4); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .card .label { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+  .card .value { font-size: 1.5rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .card .sub { color: var(--muted); font-size: 0.82rem; margin-top: 4px; }
+  .card.healthy { border-color: rgba(63,185,80,0.35); }
+  .card.healthy .value { color: var(--green); }
+  .card.warning { border-color: rgba(210,153,34,0.45); }
+  .card.warning .value { color: var(--amber); }
+  .card.breached { border-color: rgba(248,81,73,0.5); }
+  .card.breached .value { color: var(--red); }
+  .pos { color: var(--green); }
+  .neg { color: var(--red); }
+
+  .panels { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 20px; }
+  @media (max-width: 880px) { .panels { grid-template-columns: 1fr; } }
+
+  section.panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  section.panel h2 { font-size: 1rem; margin: 0 0 16px; font-weight: 600; color: var(--text); }
+  section.panel h2 .muted { color: var(--muted); font-weight: 400; font-size: 0.85rem; }
+
+  form.grid-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+  form.grid-form .full { grid-column: 1 / -1; }
+  label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 4px; }
+  input, select {
+    width: 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    color: var(--text);
+    font-size: 0.92rem;
+    font-family: inherit;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; }
+  .checkbox-row input { width: auto; }
+  button {
+    background: var(--accent);
+    color: #1a1206;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 18px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+  button:hover { filter: brightness(1.08); }
+  button.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+  button.danger { background: transparent; color: var(--red); border: 1px solid rgba(248,81,73,0.4); padding: 4px 10px; font-size: 0.78rem; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; }
+  .dir-long { color: var(--long); font-weight: 600; }
+  .dir-short { color: var(--short); font-weight: 600; }
+
+  .price-bar { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px; }
+  .price-bar .field { flex: 1; max-width: 220px; }
+  .price-bar button { margin-top: 0; }
+  .price-bar .note { color: var(--muted); font-size: 0.78rem; margin-left: 4px; }
+
+  .footer-note { color: var(--muted); font-size: 0.78rem; margin-top: 28px; text-align: center; }
+  code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; font-size: 0.85em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Prop Desk <span class="muted">— {{ firm }} · {{ instrument }} · {{ account.phase | capitalize }}</span></h1>
+    {% if not verified %}
+    <span class="badge warn">⚠ rules not yet verified against live dashboard</span>
+    {% endif %}
+  </header>
+
+  <form method="get" class="price-bar" action="/">
+    <div class="field">
+      <label for="current_price">Current XAUUSD price (optional — for open-position risk)</label>
+      <input type="text" id="current_price" name="current_price" value="{{ current_price }}" placeholder="e.g. 2650.00">
+    </div>
+    <button type="submit" class="secondary">Refresh</button>
+    {% if floors.open_risk_is_estimated %}
+    <span class="note">no price entered — showing risk as if flat since entry, not true floating risk</span>
+    {% endif %}
+  </form>
+
+  <div class="grid">
+    <div class="card {{ floors.headroom_status }}">
+      <div class="label">Headroom to soft floor</div>
+      <div class="value">${{ "{:,.0f}".format(floors.headroom) }}</div>
+      <div class="sub">soft floor at ${{ "{:,.0f}".format(floors.binding_soft) }}</div>
+    </div>
+    <div class="card">
+      <div class="label">Equity</div>
+      <div class="value">${{ "{:,.0f}".format(account.equity) }}</div>
+      <div class="sub">balance ${{ "{:,.0f}".format(account.balance) }}</div>
+    </div>
+    <div class="card">
+      <div class="label">Day P&L</div>
+      <div class="value {{ 'pos' if floors.day_pnl >= 0 else 'neg' }}">
+        {{ "+" if floors.day_pnl >= 0 else "" }}${{ "{:,.0f}".format(floors.day_pnl) }}
+      </div>
+      <div class="sub">{{ "{:+.2f}".format(floors.day_pnl_pct) }}% · daily floor ${{ "{:,.0f}".format(floors.soft_daily) }}</div>
+    </div>
+    <div class="card">
+      <div class="label">Total P&L</div>
+      <div class="value {{ 'pos' if floors.total_pnl >= 0 else 'neg' }}">
+        {{ "+" if floors.total_pnl >= 0 else "" }}${{ "{:,.0f}".format(floors.total_pnl) }}
+      </div>
+      <div class="sub">
+        {{ "{:+.2f}".format(floors.total_pnl_pct) }}%
+        {% if floors.target_pct %} · {{ "{:.0f}".format(floors.target_progress) }}% of {{ floors.target_pct }}% target{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="panels">
+    <div>
+      <section class="panel">
+        <h2>Account state <span class="muted">— updated by hand, each save is timestamped</span></h2>
+        <form class="grid-form" method="post" action="/api/state">
+          <div>
+            <label for="phase">Phase</label>
+            <select id="phase" name="phase">
+              <option value="challenge" {{ "selected" if account.phase == "challenge" }}>Challenge</option>
+              <option value="verification" {{ "selected" if account.phase == "verification" }}>Verification</option>
+              <option value="funded" {{ "selected" if account.phase == "funded" }}>Funded</option>
+            </select>
+          </div>
+          <div>
+            <label for="initial_balance">Initial balance</label>
+            <input type="text" id="initial_balance" name="initial_balance" value="{{ account.initial_balance }}">
+          </div>
+          <div>
+            <label for="balance">Balance</label>
+            <input type="text" id="balance" name="balance" value="{{ account.balance }}">
+          </div>
+          <div>
+            <label for="equity">Equity</label>
+            <input type="text" id="equity" name="equity" value="{{ account.equity }}">
+          </div>
+          <div>
+            <label for="prev_day_closing_balance">Prev. day closing balance</label>
+            <input type="text" id="prev_day_closing_balance" name="prev_day_closing_balance" value="{{ account.prev_day_closing_balance }}">
+          </div>
+          <div>
+            <label for="week_pnl">Week P&L</label>
+            <input type="text" id="week_pnl" name="week_pnl" value="{{ account.week_pnl }}">
+          </div>
+          <div>
+            <label for="trading_days_used">Trading days used</label>
+            <input type="number" id="trading_days_used" name="trading_days_used" value="{{ account.trading_days_used }}">
+          </div>
+          <div>
+            <label for="trades_today">Trades today</label>
+            <input type="number" id="trades_today" name="trades_today" value="{{ account.trades_today }}">
+          </div>
+          <div>
+            <label for="consecutive_losses">Consecutive losses</label>
+            <input type="number" id="consecutive_losses" name="consecutive_losses" value="{{ account.consecutive_losses }}">
+          </div>
+          <div class="checkbox-row" style="align-self:end; padding-bottom:8px;">
+            <input type="checkbox" id="had_loss_today" name="had_loss_today" value="1">
+            <label for="had_loss_today" style="margin:0;">Just took a loss (starts cooldown)</label>
+          </div>
+          <div class="full">
+            <button type="submit">Save account state</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h2>Open positions</h2>
+        {% if account.open_positions %}
+        <table>
+          <tr><th>Dir</th><th>Entry</th><th>Stop</th><th>Lots</th><th>Opened</th><th></th></tr>
+          {% for p in account.open_positions %}
+          <tr>
+            <td class="dir-{{ p.direction.value | lower }}">{{ p.direction.value }}</td>
+            <td>{{ p.entry_price }}</td>
+            <td>{{ p.stop_price }}</td>
+            <td>{{ p.lots }}</td>
+            <td>{{ p.opened_at.strftime("%H:%M %d-%b") }}</td>
+            <td>
+              <form method="post" action="/api/positions/{{ loop.index0 }}/close" style="margin:0;">
+                <button type="submit" class="danger">close</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </table>
+        {% else %}
+        <p class="sub">No open positions.</p>
+        {% endif %}
+
+        <form class="grid-form" method="post" action="/api/positions" style="margin-top:16px;">
+          <div>
+            <label for="direction">Direction</label>
+            <select id="direction" name="direction">
+              <option value="LONG">Long</option>
+              <option value="SHORT">Short</option>
+            </select>
+          </div>
+          <div>
+            <label for="lots">Lots</label>
+            <input type="text" id="lots" name="lots" placeholder="0.71">
+          </div>
+          <div>
+            <label for="entry_price">Entry price</label>
+            <input type="text" id="entry_price" name="entry_price" placeholder="2650.00">
+          </div>
+          <div>
+            <label for="stop_price">Stop price</label>
+            <input type="text" id="stop_price" name="stop_price" placeholder="2643.00">
+          </div>
+          <div class="full">
+            <button type="submit" class="secondary">Add position</button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <div>
+      <section class="panel">
+        <h2>Firm limits <span class="muted">— from <code>rules.ftmo-100k.yaml</code></span></h2>
+        <table>
+          <tr><th></th><th>Firm's hard limit</th><th>Our soft limit</th></tr>
+          <tr><td>Daily floor</td><td>${{ "{:,.0f}".format(floors.hard_daily) }}</td><td>${{ "{:,.0f}".format(floors.soft_daily) }}</td></tr>
+          <tr><td>Max floor</td><td>${{ "{:,.0f}".format(floors.hard_max) }}</td><td>${{ "{:,.0f}".format(floors.soft_max) }}</td></tr>
+        </table>
+        <p class="sub" style="margin-top:12px;">
+          Risk per trade: <b>{{ floors.risk_per_trade_pct }}%</b>
+          {% if floors.size_multiplier != 1 %}
+            — currently sized to <b>{{ (floors.size_multiplier * 100) | round(0) }}%</b> of that after {{ account.consecutive_losses }} consecutive loss(es)
+          {% endif %}
+        </p>
+        <p class="sub">Open-position risk right now: ${{ "{:,.0f}".format(floors.open_risk) }}</p>
+      </section>
+
+      <section class="panel">
+        <h2>Recent history</h2>
+        {% if history %}
+        <table>
+          <tr><th>Saved</th><th>Equity</th><th>Phase</th></tr>
+          {% for h in history %}
+          <tr>
+            <td>{{ h.ts[11:16] }} {{ h.ts[5:10] }}</td>
+            <td>${{ "{:,.0f}".format(h.equity | float) }}</td>
+            <td>{{ h.phase }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+        {% else %}
+        <p class="sub">No saves yet.</p>
+        {% endif %}
+      </section>
+    </div>
+  </div>
+
+  <p class="footer-note">
+    Manual entry only — this dashboard reads and writes account state; it never touches a broker or FTMO account.
+    P1 (live market data) isn't built yet, so open-position risk above is an estimate unless you enter a current price.
+  </p>
+
+</div>
+</body>
+</html>
