@@ -34,7 +34,27 @@ CREATE TABLE IF NOT EXISTS account_snapshots (
     consecutive_losses INTEGER NOT NULL,
     week_pnl TEXT NOT NULL,
     last_loss_at TEXT,
-    open_positions_json TEXT NOT NULL
+    open_positions_json TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'manual'
+);
+
+CREATE TABLE IF NOT EXISTS mt5_connections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    login TEXT NOT NULL,
+    server TEXT NOT NULL,
+    encrypted_investor_password TEXT NOT NULL,
+    encrypted_metaapi_token TEXT NOT NULL,
+    metaapi_account_id TEXT,
+    created_at TEXT NOT NULL,
+    last_synced_at TEXT,
+    last_sync_error TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS daily_rollovers (
+    date TEXT PRIMARY KEY,
+    closing_balance TEXT NOT NULL,
+    recorded_at TEXT NOT NULL
 );
 """
 
@@ -47,10 +67,25 @@ class AccountStore:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute(SCHEMA)
+        for statement in SCHEMA.strip().split(";"):
+            if statement.strip():
+                self._conn.execute(statement)
+        self._migrate()
         self._conn.commit()
 
-    def save(self, account: AccountState) -> None:
+    def _migrate(self) -> None:
+        """CREATE TABLE IF NOT EXISTS does nothing for a table that already
+        exists with an older shape — it silently does NOT add new columns.
+        A database from before the 'source' column existed would otherwise
+        crash on the next save() with 'no such column: source'."""
+        cols = {row[1] for row in self._conn.execute("PRAGMA table_info(account_snapshots)")}
+        if "source" not in cols:
+            self._conn.execute("ALTER TABLE account_snapshots ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'")
+
+    def save(self, account: AccountState, source: str = "manual") -> None:
+        """Persist a new snapshot. `source` is 'manual' or 'mt5-sync', purely
+        informational — it lets the dashboard show which fields came from
+        auto-sync versus hand entry, and does not change any risk math."""
         positions = [
             {
                 "direction": p.direction.value,
@@ -66,8 +101,9 @@ class AccountStore:
             INSERT INTO account_snapshots (
                 ts, phase, initial_balance, balance, equity,
                 prev_day_closing_balance, trading_days_used, trades_today,
-                consecutive_losses, week_pnl, last_loss_at, open_positions_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                consecutive_losses, week_pnl, last_loss_at, open_positions_json,
+                source
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 datetime.now(timezone.utc).isoformat(),
@@ -82,6 +118,7 @@ class AccountStore:
                 str(account.week_pnl),
                 account.last_loss_at.isoformat() if account.last_loss_at else None,
                 json.dumps(positions),
+                source,
             ),
         )
         self._conn.commit()
@@ -127,6 +164,63 @@ class AccountStore:
             last_loss_at=datetime.fromisoformat(r["last_loss_at"]) if r["last_loss_at"] else None,
             open_positions=positions,
         )
+
+    # ---- MT5 connection (credential + sync status) -----------------------
+
+    def save_mt5_connection(
+        self, *, login: str, server: str, encrypted_investor_password: str, encrypted_metaapi_token: str
+    ) -> int:
+        """Replaces any existing connection — there is only ever one at a time."""
+        self._conn.execute("DELETE FROM mt5_connections")
+        cur = self._conn.execute(
+            """
+            INSERT INTO mt5_connections (login, server, encrypted_investor_password,
+                encrypted_metaapi_token, created_at, enabled)
+            VALUES (?, ?, ?, ?, ?, 1)
+            """,
+            (login, server, encrypted_investor_password, encrypted_metaapi_token, datetime.now(timezone.utc).isoformat()),
+        )
+        self._conn.commit()
+        return cur.lastrowid
+
+    def get_mt5_connection(self) -> dict | None:
+        row = self._conn.execute("SELECT * FROM mt5_connections ORDER BY id DESC LIMIT 1").fetchone()
+        if row is None:
+            return None
+        cols = [d[1] for d in self._conn.execute("PRAGMA table_info(mt5_connections)")]
+        return dict(zip(cols, row))
+
+    def set_mt5_account_id(self, connection_id: int, metaapi_account_id: str) -> None:
+        self._conn.execute(
+            "UPDATE mt5_connections SET metaapi_account_id = ? WHERE id = ?",
+            (metaapi_account_id, connection_id),
+        )
+        self._conn.commit()
+
+    def record_sync_result(self, connection_id: int, *, error: str | None) -> None:
+        self._conn.execute(
+            "UPDATE mt5_connections SET last_synced_at = ?, last_sync_error = ? WHERE id = ?",
+            (datetime.now(timezone.utc).isoformat(), error, connection_id),
+        )
+        self._conn.commit()
+
+    def disconnect_mt5(self) -> None:
+        self._conn.execute("DELETE FROM mt5_connections")
+        self._conn.commit()
+
+    # ---- daily rollover (prev_day_closing_balance) ------------------------
+
+    def record_rollover(self, date_str: str, closing_balance: Decimal) -> None:
+        """Idempotent — running the rollover job twice for the same date is safe."""
+        self._conn.execute(
+            "INSERT OR REPLACE INTO daily_rollovers (date, closing_balance, recorded_at) VALUES (?, ?, ?)",
+            (date_str, str(closing_balance), datetime.now(timezone.utc).isoformat()),
+        )
+        self._conn.commit()
+
+    def last_rollover_date(self) -> str | None:
+        row = self._conn.execute("SELECT date FROM daily_rollovers ORDER BY date DESC LIMIT 1").fetchone()
+        return row[0] if row else None
 
     def close(self) -> None:
         self._conn.close()

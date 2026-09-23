@@ -11,11 +11,13 @@ promised to keep updated manually, plus the math that actually matters.
 
 from __future__ import annotations
 
+import logging
 import os
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -24,6 +26,11 @@ from propdesk.config import DEFAULT_RULES_PATH, load_rules
 from propdesk.models import AccountState, Direction, OpenPosition
 from propdesk.risk.sizing import compute_floors
 from propdesk.storage import AccountStore
+from propdesk.sync.crypto import SecretKeyMissing, encrypt
+from propdesk.sync.metaapi_client import MetaApiConnectionError, provision_account
+from propdesk.sync.worker import daily_rollover, sync_once
+
+logger = logging.getLogger("propdesk.dashboard")
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = Path(os.environ.get("PROPDESK_DB", BASE_DIR.parents[2] / "data" / "propdesk.db"))
@@ -33,6 +40,20 @@ app = FastAPI(title="Prop Desk — Account Dashboard")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 store = AccountStore(DB_PATH)
 cfg = load_rules(RULES_PATH)
+scheduler = AsyncIOScheduler()
+
+
+@app.on_event("startup")
+async def _start_scheduler():
+    scheduler.add_job(sync_once, "interval", minutes=5, args=[store, cfg], id="mt5-sync", max_instances=1)
+    scheduler.add_job(daily_rollover, "interval", minutes=30, args=[store, cfg], id="daily-rollover", max_instances=1)
+    scheduler.start()
+    logger.info("Scheduler started: MT5 sync every 5min, rollover check every 30min")
+
+
+@app.on_event("shutdown")
+async def _stop_scheduler():
+    scheduler.shutdown(wait=False)
 
 DEFAULT_STATE = AccountState(
     phase="challenge",
@@ -134,8 +155,51 @@ def dashboard(request: Request, current_price: str | None = None):
             "instrument": cfg.instrument.symbol,
             "verified": cfg.meta.verified_against_dashboard,
             "current_price": current_price or "",
+            "mt5": store.get_mt5_connection(),
         },
     )
+
+
+@app.post("/api/mt5/connect")
+async def connect_mt5(
+    metaapi_token: str = Form(...),
+    login: str = Form(...),
+    server: str = Form(...),
+    investor_password: str = Form(...),
+):
+    try:
+        metaapi_account_id = await provision_account(
+            token=metaapi_token, login=login, investor_password=investor_password, server=server
+        )
+    except SecretKeyMissing as exc:
+        return HTMLResponse(f"<p>Cannot store credential: {exc}</p>", status_code=500)
+    except MetaApiConnectionError as exc:
+        return HTMLResponse(f"<p>Could not connect: {exc}</p><p><a href='/'>back</a></p>", status_code=400)
+
+    connection_id = store.save_mt5_connection(
+        login=login,
+        server=server,
+        encrypted_investor_password=encrypt(investor_password),
+        encrypted_metaapi_token=encrypt(metaapi_token),
+    )
+    store.set_mt5_account_id(connection_id, metaapi_account_id)
+
+    # Run one sync immediately so the dashboard shows real data right away
+    # rather than waiting up to 5 minutes for the next scheduled tick.
+    await sync_once(store, cfg)
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/api/mt5/disconnect")
+def disconnect_mt5():
+    store.disconnect_mt5()
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/api/mt5/sync-now")
+async def sync_now():
+    await sync_once(store, cfg)
+    return RedirectResponse("/", status_code=303)
 
 
 def _dec(raw: str | None, fallback: Decimal = Decimal(0)) -> Decimal:

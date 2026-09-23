@@ -288,6 +288,53 @@
 
     <div>
       <section class="panel">
+        <h2>MT5 auto-sync <span class="muted">— read-only, investor password only</span></h2>
+        {% if mt5 %}
+          <p class="sub">
+            Connected: <b>{{ mt5.login }}</b> @ {{ mt5.server }}<br>
+            {% if mt5.last_synced_at %}
+              Last synced: {{ mt5.last_synced_at[11:16] }} {{ mt5.last_synced_at[5:10] }} UTC
+              {% if mt5.last_sync_error %}<br><span style="color:var(--red)">⚠ {{ mt5.last_sync_error }}</span>{% endif %}
+            {% else %}
+              Not synced yet.
+            {% endif %}
+          </p>
+          <form method="post" action="/api/mt5/sync-now" style="display:inline;">
+            <button type="submit" class="secondary">Sync now</button>
+          </form>
+          <form method="post" action="/api/mt5/disconnect" style="display:inline; margin-left:8px;">
+            <button type="submit" class="danger">Disconnect</button>
+          </form>
+          <p class="sub" style="margin-top:10px;">
+            Auto-synced: balance, equity, open positions.<br>
+            Still manual: phase, trading days, trade count, loss streak, week P&L.
+          </p>
+        {% else %}
+          <form class="grid-form" method="post" action="/api/mt5/connect">
+            <div class="full">
+              <label for="metaapi_token">MetaApi.cloud API token <span class="muted">(from your free metaapi.cloud account)</span></label>
+              <input type="password" id="metaapi_token" name="metaapi_token" required>
+            </div>
+            <div>
+              <label for="login">MT5 login</label>
+              <input type="text" id="login" name="login" required>
+            </div>
+            <div>
+              <label for="server">MT5 server</label>
+              <input type="text" id="server" name="server" placeholder="e.g. FTMO-Demo" required>
+            </div>
+            <div class="full">
+              <label for="investor_password">Investor password <span class="muted">(read-only — NOT your trading password)</span></label>
+              <input type="password" id="investor_password" name="investor_password" required>
+            </div>
+            <div class="full">
+              <button type="submit">Connect</button>
+            </div>
+          </form>
+        {% endif %}
+      </section>
+
+      <section class="panel">
         <h2>Firm limits <span class="muted">— from <code>rules.ftmo-100k.yaml</code></span></h2>
         <table>
           <tr><th></th><th>Firm's hard limit</th><th>Our soft limit</th></tr>
@@ -307,12 +354,12 @@
         <h2>Recent history</h2>
         {% if history %}
         <table>
-          <tr><th>Saved</th><th>Equity</th><th>Phase</th></tr>
+          <tr><th>Saved</th><th>Equity</th><th>Source</th></tr>
           {% for h in history %}
           <tr>
             <td>{{ h.ts[11:16] }} {{ h.ts[5:10] }}</td>
             <td>${{ "{:,.0f}".format(h.equity | float) }}</td>
-            <td>{{ h.phase }}</td>
+            <td>{{ h.source }}</td>
           </tr>
           {% endfor %}
         </table>

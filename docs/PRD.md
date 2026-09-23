@@ -37,7 +37,7 @@ A server-hosted assistant that:
 ## 4. Non-goals
 
 - **No automated execution.** The system never places, modifies, or closes a trade. It signals; the user executes manually.
-- **No broker or FTMO API integration.** Account state is entered manually by the user. This is deliberate — it keeps the system read-only and avoids any credential risk.
+- **No trade-execution integration.** The system never places, modifies, or closes a trade, and never stores a trading-capable (master) broker password. **Amended 2026-09-23**: account state can now be auto-synced from MT5 via a **read-only investor password** (encrypted at rest) — balance, equity, and open positions only. This doesn't reintroduce execution risk: an investor password is incapable of trading by MT5's own design, not by this system's discipline. FTMO-specific bookkeeping that needs trade-history reconstruction (trades_today, consecutive_losses, week_pnl) stays manual rather than being approximated from partial data.
 - **No multi-user / SaaS.** Single operator.
 - **No copy trading, no martingale, no grid.** Explicitly out of scope.
 - **No financial advice to third parties.** Personal tooling only.

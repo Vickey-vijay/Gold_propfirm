@@ -14,7 +14,15 @@ safety argument of the system.
 ## Non-negotiables
 
 - **No automated execution.** The system signals; the human places every trade.
-  Never add broker or FTMO API integration, and never store trading credentials.
+  Never add broker or FTMO API integration capable of placing/modifying/closing
+  a trade, and never store a trading-capable (master) password.
+- **The one credential this system does store is an MT5 investor (read-only)
+  password**, used only to auto-sync balance/equity/open positions via
+  MetaApi.cloud (`src/propdesk/sync/`). It is encrypted at rest with a key that
+  lives only in the server environment, never in the database or git. An
+  investor password cannot place, modify, or close a trade — that's enforced
+  by MT5 itself, not by this codebase's good behavior. Do not widen this to a
+  master password for any reason.
 - **Risk Engine changes require tests.** Every rule needs a unit test at the exact
   boundary, and the hypothesis property test asserting no approved trade can cross
   a hard floor must keep passing. It is a release gate.
@@ -37,6 +45,9 @@ src/propdesk/judgment/        L2 — Claude Sonnet 5
 src/propdesk/risk/            L3 — deterministic sizing and rule gate
 src/propdesk/replay/          point-in-time replay + leakage audit
 src/propdesk/sim/             simulated FTMO account
+src/propdesk/dashboard/       account dashboard (FastAPI, manual entry + auto-sync)
+src/propdesk/sync/            MT5 auto-sync via MetaApi.cloud, investor password only
+src/propdesk/storage.py       SQLite: account snapshots, MT5 connection, daily rollovers
 ```
 
 ## Claude API conventions
